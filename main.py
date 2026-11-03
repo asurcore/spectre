@@ -4,40 +4,18 @@ import sys
 import json
 import re
 import time
+import os
 
-# Platforms with custom search parameters and error handling rules
-PLATFORMS = {
-    "GitHub": {
-        "url": "https://github.com/{}",
-        "error_type": "status",
-        "error_code": 404
-    },
-    "Instagram": {
-        "url": "https://www.instagram.com/{}/",
-        "error_type": "keyword",
-        "keyword": "Page not found"
-    },
-    "Twitter/X": {
-        "url": "https://twitter.com/{}",
-        "error_type": "status",
-        "error_code": 404
-    },
-    "Reddit": {
-        "url": "https://www.reddit.com/user/{}",
-        "error_type": "status",
-        "error_code": 404
-    },
-    "TikTok": {
-        "url": "https://www.tiktok.com/@{}",
-        "error_type": "status",
-        "error_code": 404
-    },
-    "Pinterest": {
-        "url": "https://www.pinterest.com/{}/",
-        "error_type": "status",
-        "error_code": 404
-    }
-}
+# Load platform configurations dynamically from config.json
+CONFIG_FILE = "config.json"
+
+if os.path.exists(CONFIG_FILE):
+    with open(CONFIG_FILE, "r") as f:
+        config_data = json.load(f)
+        PLATFORMS = config_data.get("platforms", {})
+else:
+    print(f"[-] Critical Error: Configuration file '{CONFIG_FILE}' not found!")
+    sys.exit(1)
 
 HEADERS = {
     "User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36",
@@ -102,7 +80,7 @@ async def main():
     print(f"       SPECTRE RECONNAISSANCE ENGINE (v1.0)")
     print("="*65)
     print(f"[*] Target Handle : {target}")
-    print(f"[*] Target Modules: {len(PLATFORMS)} Global Platforms")
+    print(f"[*] Target Modules: {len(PLATFORMS)} Global Platforms (Loaded via config.json)")
     print(f"[*] Status        : Scanning asynchronously...\n")
     
     total_start = time.time()
