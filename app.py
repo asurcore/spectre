@@ -1,7 +1,8 @@
 import asyncio
+import aiohttp
 from fastapi import FastAPI
 from fastapi.responses import HTMLResponse
-from main import PLATFORMS, aiohttp, check_platform
+from main import PLATFORMS, check_platform
 
 app = FastAPI(title="Spectre OSINT Suite", version="1.1.0")
 
