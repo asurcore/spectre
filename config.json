@@ -1,0 +1,34 @@
+{
+  "platforms": {
+    "GitHub": {
+      "url": "https://github.com/{}",
+      "error_type": "status",
+      "error_code": 404
+    },
+    "Instagram": {
+      "url": "https://www.instagram.com/{}/",
+      "error_type": "keyword",
+      "keyword": "Page not found"
+    },
+    "Twitter/X": {
+      "url": "https://twitter.com/{}",
+      "error_type": "status",
+      "error_code": 404
+    },
+    "Reddit": {
+      "url": "https://www.reddit.com/user/{}",
+      "error_type": "status",
+      "error_code": 404
+    },
+    "TikTok": {
+      "url": "https://www.tiktok.com/@{}",
+      "error_type": "status",
+      "error_code": 404
+    },
+    "Pinterest": {
+      "url": "https://www.pinterest.com/{}/",
+      "error_type": "status",
+      "error_code": 404
+    }
+  }
+}
