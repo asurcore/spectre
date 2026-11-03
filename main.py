@@ -1,94 +1,99 @@
 import asyncio
-import aiohttp
-import sys
 import json
-import re
-import time
 import os
+import random
+import re
+import sys
+import time
+import aiohttp
+from bs4 import BeautifulSoup
 
-CONFIG_PATH = "config.json"
+CONFIG_FILE = "config.json"
 
-if not os.path.exists(CONFIG_PATH):
-    print(f"[!] Critical: Config not found at {CONFIG_PATH}")
+if not os.path.exists(CONFIG_FILE):
+    print(f"[!] Error: {CONFIG_FILE} not found.")
     sys.exit(1)
 
-with open(CONFIG_PATH, "r") as f:
-    PLATFORMS = json.load(f).get("platforms", {})
+with open(CONFIG_FILE, "r") as f:
+    config = json.load(f)
 
-HEADERS = {
-    "User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36",
-    "Accept-Language": "en-US,en;q=0.9"
+settings = config.get("settings", {})
+PLATFORMS = config.get("platforms", {})
+PROXIES = settings.get("proxy_list", [])
+
+PATTERNS = {
+    "email": r"[a-zA-Z0-9_.+-]+@[a-zA-Z0-9-]+\.[a-zA-Z0-9-.]+",
+    "phone": r"\+?[0-9][0-9()\-\s]{7,15}[0-9]"
 }
 
-async def extract_intel(html):
-    emails = set(re.findall(r'[a-zA-Z0-9_.+-]+@[a-zA-Z0-9-]+\.[a-zA-Z0-9-.]+', html))
-    phones = set(re.findall(r'(?:\+?\d{1,3}[-.\s]?)?\(?\d{3}\)?[-.\s]?\d{3][-.\s]?\d{4}', html))
-    links = set(re.findall(r'https?://(?:www\.)?(?:t\.me|linktr\.ee|wa\.me|beacons\.ai|instagram\.com|twitter\.com)/[a-zA-Z0-9_.-]+', html))
-    
-    valid_emails = [e for e in emails if not any(x in e for x in ['.png', '.jpg', '.svg', 'example.com', 'sentry'])]
-    valid_phones = [p for p in phones if len(p.strip()) >= 10]
-    
-    return {
-        "emails": valid_emails,
-        "phones": valid_phones,
-        "external_links": list(links)
-    }
+def get_random_proxy():
+    return random.choice(PROXIES) if PROXIES else None
 
-async def check_target(session, name, cfg, username):
-    url = cfg["url"].format(username)
-    start = time.time()
-    try:
-        async with session.get(url, headers=HEADERS, timeout=12, allow_redirects=True) as resp:
-            elapsed = round(time.time() - start, 2)
-            if resp.status != 200:
-                return {"platform": name, "status": "Not Found", "url": url, "time": elapsed}
-            
-            body = await resp.text()
-            if cfg.get("error_type") == "keyword" and cfg["keyword"].lower() in body.lower():
-                return {"platform": name, "status": "Not Found", "url": url, "time": elapsed}
-            
-            intel = await extract_intel(body)
-            return {"platform": name, "status": "Found", "url": url, "time": elapsed, "intelligence": intel}
-    except asyncio.TimeoutError:
-        return {"platform": name, "status": "Timeout", "url": url, "time": 0}
-    except Exception:
-        return {"platform": name, "status": "Error", "url": url, "time": 0}
-
-async def main():
-    if len(sys.argv) < 2:
-        print(f"Usage: python {sys.argv[0]} <username>")
-        sys.exit(1)
-        
-    target = sys.argv[1]
-    print(f"\n[*] Spectre Recon Engine v1.0")
-    print(f"[*] Target: {target} | Modules: {len(PLATFORMS)}\n")
+async def check_platform(session, name, data, username):
+    url = data["url"].format(username)
+    timeout = settings.get("timeout", 10)
     
+    headers = {"User-Agent": settings.get("user_agent", "Mozilla/5.0")}
+    if "headers" in data and data["headers"]:
+        headers.update(data["headers"])
+
+    proxy = get_random_proxy()
     start_time = time.time()
-    async with aiohttp.ClientSession() as session:
-        tasks = [check_target(session, name, cfg, target) for name, cfg in PLATFORMS.items()]
-        results = await asyncio.gather(*tasks)
-        
-    print("-" * 60)
-    hits = 0
-    report = []
-    for r in results:
-        report.append(r)
-        if r["status"] == "Found":
-            hits += 1
-            print(f"[+] {r['platform']} ({r['time']}s) -> {r['url']}")
-            intel = r.get("intelligence", {})
-            if intel.get("emails") or intel.get("phones") or intel.get("external_links"):
-                print(f"    └── Data: {intel}")
-        else:
-            print(f"[-] {r['platform']}: Not Found")
+
+    try:
+        async with session.get(url, headers=headers, proxy=proxy, timeout=timeout, allow_redirects=True) as response:
+            elapsed = round(time.time() - start_time, 2)
             
-    print("-" * 60)
-    print(f"[*] Completed in {round(time.time() - start_time, 2)}s | Matches: {hits}/{len(PLATFORMS)}")
+            if data["error_type"] == "status_code":
+                if response.status == 200:
+                    html = await response.text()
+                    intel = extract_intel(html)
+                    return {"platform": name, "status": "Found", "time": elapsed, "url": url, "intel": intel}
+                else:
+                    return {"platform": name, "status": "Not Found", "time": elapsed}
+    except Exception:
+        return {"platform": name, "status": "Error", "time": round(time.time() - start_time, 2)}
+
+def extract_intel(html):
+    soup = BeautifulSoup(html, "html.parser")
+    text = soup.get_text()
     
-    outfile = f"{target}_report.json"
-    with open(outfile, "w") as f:
-        json.dump(report, f, indent=4)
-    print(f"[*] Report saved to {outfile}\n")
+    found = {}
+    for key, pattern in PATTERNS.items():
+        matches = re.findall(pattern, text)
+        if matches:
+            found[key] = list(set(matches))
+    return found
+
+async def scan(username):
+    print(f"\n[*] Scanning target: {username}")
+    print("-" * 60)
+    
+    results = []
+    connector = aiohttp.TCPConnector(ssl=False)
+    async with aiohttp.ClientSession(connector=connector) as session:
+        tasks = [check_platform(session, name, data, username) for name, data in PLATFORMS.items()]
+        responses = await asyncio.gather(*tasks)
+        
+        for res in responses:
+            if res["status"] == "Found":
+                print(f"[+] {res['platform']} ({res['time']}s) -> {res['url']}")
+                if res.get("intel"):
+                    print(f"    └── Extracted Info: {res['intel']}")
+            else:
+                print(f"[-] {res['platform']}: Not Found")
+            results.append(res)
+    
+    print("-" * 60)
+    report_name = f"{username}_report.json"
+    with open(report_name, "w") as f:
+        json.dump(results, f, indent=4)
+    print(f"[*] Report saved to {report_name}")
 
 if __name__ == "__main__":
-    asyncio.run(main())
+    if len(sys.argv) < 2:
+        print("Usage: python main.py <username>")
+        sys.exit(1)
+    
+    target = sys.argv[1]
+    asyncio.run(scan(target))
