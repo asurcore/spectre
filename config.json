@@ -1,0 +1,33 @@
+{
+  "settings": {
+    "timeout": 10,
+    "user_agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36",
+    "proxy_list": []
+  },
+  "platforms": {
+    "Instagram": {
+      "url": "https://www.instagram.com/{}/",
+      "error_type": "status_code",
+      "error_code": 404,
+      "headers": {}
+    },
+    "GitHub": {
+      "url": "https://github.com/{}",
+      "error_type": "status_code",
+      "error_code": 404,
+      "headers": {}
+    },
+    "Reddit": {
+      "url": "https://www.reddit.com/user/{}",
+      "error_type": "status_code",
+      "error_code": 404,
+      "headers": {}
+    },
+    "Pinterest": {
+      "url": "https://www.pinterest.com/{}/",
+      "error_type": "status_code",
+      "error_code": 404,
+      "headers": {}
+    }
+  }
+}
