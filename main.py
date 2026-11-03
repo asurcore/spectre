@@ -1,3 +1,4 @@
+cat << 'EOF' > main.py
 import asyncio
 import json
 import os
@@ -97,3 +98,4 @@ if __name__ == "__main__":
     
     target = sys.argv[1]
     asyncio.run(scan(target))
+EOF
