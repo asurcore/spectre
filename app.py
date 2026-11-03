@@ -1,10 +1,80 @@
 import asyncio
+import json
+import os
+import random
+import re
+import time
 import aiohttp
+from bs4 import BeautifulSoup
 from fastapi import FastAPI
 from fastapi.responses import HTMLResponse
-from main import PLATFORMS, check_platform
 
-app = FastAPI(title="Spectre OSINT Suite", version="1.1.0")
+CONFIG_FILE = "config.json"
+
+if not os.path.exists(CONFIG_FILE):
+    # Fallback default config if file is missing
+    default_config = {
+        "settings": {"timeout": 10, "user_agent": "Mozilla/5.0", "proxy_list": []},
+        "platforms": {
+            "Instagram": {"url": "https://www.instagram.com/{}/", "error_type": "status_code", "error_code": 404, "headers": {}},
+            "GitHub": {"url": "https://github.com/{}", "error_type": "status_code", "error_code": 404, "headers": {}},
+            "Reddit": {"url": "https://www.reddit.com/user/{}", "error_type": "status_code", "error_code": 404, "headers": {}},
+            "Pinterest": {"url": "https://www.pinterest.com/{}/", "error_type": "status_code", "error_code": 404, "headers": {}}
+        }
+    }
+    with open(CONFIG_FILE, "w") as f:
+        json.dump(default_config, f, indent=4)
+
+with open(CONFIG_FILE, "r") as f:
+    config = json.load(f)
+
+settings = config.get("settings", {})
+PLATFORMS = config.get("platforms", {})
+PROXIES = settings.get("proxy_list", [])
+
+PATTERNS = {
+    "email": r"[a-zA-Z0-9_.+-]+@[a-zA-Z0-9-]+\.[a-zA-Z0-9-.]+",
+    "phone": r"\+?[0-9][0-9()\-\s]{7,15}[0-9]"
+}
+
+def get_random_proxy():
+    return random.choice(PROXIES) if PROXIES else None
+
+def extract_intel(html):
+    soup = BeautifulSoup(html, "html.parser")
+    text = soup.get_text()
+    found = {}
+    for key, pattern in PATTERNS.items():
+        matches = re.findall(pattern, text)
+        if matches:
+            found[key] = list(set(matches))
+    return found
+
+async def check_platform(session, name, data, username):
+    url = data["url"].format(username)
+    timeout = settings.get("timeout", 10)
+    
+    headers = {"User-Agent": settings.get("user_agent", "Mozilla/5.0")}
+    if "headers" in data and data["headers"]:
+        headers.update(data["headers"])
+
+    proxy = get_random_proxy()
+    start_time = time.time()
+
+    try:
+        async with session.get(url, headers=headers, proxy=proxy, timeout=timeout, allow_redirects=True) as response:
+            elapsed = round(time.time() - start_time, 2)
+            if response.status == 200:
+                html = await response.text()
+                intel = extract_intel(html)
+                return {"platform": name, "status": "Found", "time": elapsed, "url": url, "intel": intel}
+            else:
+                return {"platform": name, "status": "Not Found", "time": elapsed}
+    except Exception:
+        return {"platform": name, "status": "Error", "time": round(time.time() - start_time, 2)}
+
+# FastAPI App Initialization
+app = FastAPI(title="Spectre OSINT Suite", version="1.2.0")
 
 @app.get("/", response_class=HTMLResponse)
 async def index():
