@@ -54,6 +54,25 @@ def normalize_phone(phone: str) -> str:
     return compact if len(digits) >= 7 else ""
 
 
+def mask_email(email: str) -> str:
+    local, _, domain = email.partition("@")
+    if not domain:
+        return "***"
+    if len(local) <= 2:
+        masked_local = "*" * len(local)
+    else:
+        masked_local = f"{local[0]}{'*' * (len(local) - 2)}{local[-1]}"
+    return f"{masked_local}@{domain}"
+
+
+def redact_result(item: dict[str, Any]) -> dict[str, Any]:
+    redacted = dict(item)
+    redacted["emails"] = [mask_email(email) for email in item["emails"]]
+    redacted.pop("phone_numbers", None)
+    redacted["phone_numbers"] = "[REDACTED]"
+    return redacted
+
+
 def extract_artifacts(html: str, page_url: str) -> dict[str, list[str]]:
     soup = BeautifulSoup(html, "html.parser")
     base_domain = urlparse(page_url).netloc.lower()
@@ -151,26 +170,27 @@ def print_report(username: str, results: list[dict[str, Any]]) -> None:
     print(f"{Color.BOLD}Platforms Found:{Color.RESET} {found_count}/{len(results)}\n")
 
     for item in results:
+        safe_item = redact_result(item)
         status_color = Color.GREEN if item["found"] else Color.RED
         status_label = "FOUND" if item["found"] else "NOT FOUND"
 
-        print(f"{Color.BOLD}{item['platform']}{Color.RESET}: {status_color}{status_label}{Color.RESET}")
-        print(f"  URL: {item['profile_url']}")
-        if item["http_status"] is not None:
-            print(f"  HTTP: {item['http_status']}")
-        if item["error"]:
-            print(f"  Error: {Color.YELLOW}{item['error']}{Color.RESET}")
+        print(f"{Color.BOLD}{safe_item['platform']}{Color.RESET}: {status_color}{status_label}{Color.RESET}")
+        print(f"  URL: {safe_item['profile_url']}")
+        if safe_item["http_status"] is not None:
+            print(f"  HTTP: {safe_item['http_status']}")
+        if safe_item["error"]:
+            print(f"  Error: {Color.YELLOW}{safe_item['error']}{Color.RESET}")
 
-        print(f"  Emails: {', '.join(item['emails']) if item['emails'] else '-'}")
-        print(f"  Phone Numbers: {', '.join(item['phone_numbers']) if item['phone_numbers'] else '-'}")
-        print(f"  External Links: {', '.join(item['external_links']) if item['external_links'] else '-'}")
+        print(f"  Emails (masked): {', '.join(safe_item['emails']) if safe_item['emails'] else '-'}")
+        print("  Phone Numbers: [REDACTED]")
+        print(f"  External Links: {', '.join(safe_item['external_links']) if safe_item['external_links'] else '-'}")
         print()
 
 
 def export_json(username: str, results: list[dict[str, Any]], output_path: Path | None) -> Path:
     timestamp = datetime.now(tz=timezone.utc)
-    unique_emails = sorted({email for item in results for email in item["emails"]})
-    unique_phones = sorted({phone for item in results for phone in item["phone_numbers"]})
+    safe_results = [redact_result(item) for item in results]
+    unique_emails = sorted({email for item in safe_results for email in item["emails"]})
     unique_links = sorted({link for item in results for link in item["external_links"]})
 
     payload = {
@@ -180,15 +200,14 @@ def export_json(username: str, results: list[dict[str, Any]], output_path: Path 
             "total_platforms": len(results),
             "profiles_found": sum(1 for item in results if item["found"]),
             "total_emails": len(unique_emails),
-            "total_phone_numbers": len(unique_phones),
             "total_external_links": len(unique_links),
         },
         "artifacts": {
             "emails": unique_emails,
-            "phone_numbers": unique_phones,
+            "phone_numbers": "[REDACTED]",
             "external_links": unique_links,
         },
-        "platform_results": results,
+        "platform_results": safe_results,
     }
 
     if output_path is None:
